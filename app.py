@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify
 import cv2
 import numpy as np
 import os
@@ -15,46 +15,55 @@ TEMPLATES = {
     "4th": "4th.jpg",
 }
 
+FIXED_X = {
+    "1st": 231,
+    "2nd": 467,
+    "3rd": 701,
+    "4th": 933,
+}
+
+ROI_MARGIN = 120
+
+
 def match_template(img_gray, template_gray, label):
-    img_blur = cv2.GaussianBlur(img_gray, (5, 5), 0)
+    h, w = template_gray.shape
+
+    x_center = FIXED_X[label]
+    x1 = max(0, x_center - ROI_MARGIN)
+    x2 = min(img_gray.shape[1], x_center + ROI_MARGIN)
+
+    roi = img_gray[:, x1:x2]
+
+    roi_blur = cv2.GaussianBlur(roi, (5, 5), 0)
     template_blur = cv2.GaussianBlur(template_gray, (5, 5), 0)
 
-    result = cv2.matchTemplate(img_blur, template_blur, cv2.TM_CCOEFF_NORMED)
-
+    result = cv2.matchTemplate(roi_blur, template_blur, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-    h, w = template_gray.shape
-    
     if max_val < 0.6:
-        return []
+        return None
 
-    cx = max_loc[0] + w // 2
     cy = max_loc[1] + h // 2
+    cx = FIXED_X[label]
 
-    return [(label, (cx, cy), max_loc, w, h)]
+    return (label, cx, cy)
 
 
 def detect(img):
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    all_results = []
+    results = []
 
     for label, path in TEMPLATES.items():
         template = cv2.imread(path, 0)
-
         if template is None:
-            print(f"{path} 読み込み失敗")
             continue
 
-        results = match_template(img_gray, template, label)
-        all_results.extend(results)
+        r = match_template(img_gray, template, label)
+        if r:
+            results.append(r)
 
-    for label, (cx, cy), pt, w, h in all_results:
-        cv2.rectangle(img, pt, (pt[0]+w, pt[1]+h), (0, 255, 0), 2)
-        cv2.putText(img, label, (pt[0], pt[1]-5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-    return img, all_results
+    return results
 
 
 @app.route("/")
@@ -64,27 +73,38 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    file = request.files["image"]
+    files = request.files.getlist("images")
 
-    path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(path)
+    all_data = []
 
-    img = cv2.imread(path)
+    for file in files:
+        path = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(path)
 
-    result_img, results = detect(img)
+        img = cv2.imread(path)
+        results = detect(img)
 
-    cv2.imwrite("result.jpg", result_img)
+        for label, cx, cy in results:
+            all_data.append({
+                "file": file.filename,
+                "label": label,
+                "x": int(cx),
+                "y": int(cy)
+            })
 
-    output = {}
-    for label, (cx, cy), pt, w, h in results:
-        output[label] = [int(cx), int(cy)]
+    ranked = {}
 
-    return jsonify(output)
+    for label in TEMPLATES.keys():
+        filtered = [d for d in all_data if d["label"] == label]
 
+        sorted_list = sorted(filtered, key=lambda x: x["y"])
 
-@app.route("/result")
-def result():
-    return send_file("result.jpg", mimetype="image/jpeg")
+        for i, item in enumerate(sorted_list):
+            item["rank"] = i + 1
+
+        ranked[label] = sorted_list
+
+    return jsonify(ranked)
 
 
 if __name__ == "__main__":
