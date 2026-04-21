@@ -25,6 +25,20 @@ FIXED_X = {
 ROI_MARGIN = 120
 
 
+def y_to_index(label, y):
+    if label in ["1st", "4th"]:
+        base = 1470
+        max_val = 1580
+    else:
+        base = 1470
+        max_val = 1650
+
+    if y < base or y > max_val:
+        return None
+
+    return int((y - base) / 2) + 1
+
+
 def match_template(img_gray, template_gray, label):
     h, w = template_gray.shape
 
@@ -34,16 +48,16 @@ def match_template(img_gray, template_gray, label):
 
     roi = img_gray[:, x1:x2]
 
-    roi_blur = cv2.GaussianBlur(roi, (5, 5), 0)
-    template_blur = cv2.GaussianBlur(template_gray, (5, 5), 0)
-
-    result = cv2.matchTemplate(roi_blur, template_blur, cv2.TM_CCOEFF_NORMED)
+    result = cv2.matchTemplate(roi, template_gray, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
     if max_val < 0.6:
         return None
 
     cy = max_loc[1] + h // 2
+
+    cy = int(round(cy / 2) * 2)
+
     cx = FIXED_X[label]
 
     return (label, cx, cy)
@@ -52,7 +66,7 @@ def match_template(img_gray, template_gray, label):
 def detect(img):
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    results = []
+    result = {}
 
     for label, path in TEMPLATES.items():
         template = cv2.imread(path, 0)
@@ -61,9 +75,16 @@ def detect(img):
 
         r = match_template(img_gray, template, label)
         if r:
-            results.append(r)
+            _, cx, cy = r
+            index = y_to_index(label, cy)
 
-    return results
+            result[label] = {
+                "x": int(cx),
+                "y": int(cy),
+                "index": index
+            }
+
+    return result
 
 
 @app.route("/")
@@ -73,38 +94,15 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    files = request.files.getlist("images")
+    file = request.files["image"] 
 
-    all_data = []
+    path = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(path)
 
-    for file in files:
-        path = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(path)
+    img = cv2.imread(path)
+    result = detect(img)
 
-        img = cv2.imread(path)
-        results = detect(img)
-
-        for label, cx, cy in results:
-            all_data.append({
-                "file": file.filename,
-                "label": label,
-                "x": int(cx),
-                "y": int(cy)
-            })
-
-    ranked = {}
-
-    for label in TEMPLATES.keys():
-        filtered = [d for d in all_data if d["label"] == label]
-        
-        sorted_list = sorted(filtered, key=lambda x: x["y"])
-
-        for i, item in enumerate(sorted_list):
-            item["rank"] = i + 1
-
-        ranked[label] = sorted_list
-
-    return jsonify(ranked)
+    return jsonify(result)
 
 
 if __name__ == "__main__":
