@@ -1,10 +1,4 @@
-from flask import Flask, render_template, request, jsonify
-import cv2
-import os
-
-app = Flask(__name__)
-
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, jsonify, send_file
 import cv2
 import numpy as np
 import os
@@ -21,33 +15,23 @@ TEMPLATES = {
     "4th": "4th.jpg",
 }
 
-
 def match_template(img_gray, template_gray, label):
-    result = cv2.matchTemplate(img_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+    img_blur = cv2.GaussianBlur(img_gray, (5, 5), 0)
+    template_blur = cv2.GaussianBlur(template_gray, (5, 5), 0)
 
-    threshold = 0.7
-    locations = np.where(result >= threshold)
+    result = cv2.matchTemplate(img_blur, template_blur, cv2.TM_CCOEFF_NORMED)
+
+    _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
     h, w = template_gray.shape
+    
+    if max_val < 0.6:
+        return []
 
-    points = []
+    cx = max_loc[0] + w // 2
+    cy = max_loc[1] + h // 2
 
-    for pt in zip(*locations[::-1]):
-        cx = pt[0] + w // 2
-        cy = pt[1] + h // 2
-        points.append((cx, cy, pt, w, h))
-
-    filtered = []
-    for cx, cy, pt, w, h in points:
-        too_close = False
-        for fx, fy, *_ in filtered:
-            if abs(cx - fx) < 20 and abs(cy - fy) < 20:
-                too_close = True
-                break
-        if not too_close:
-            filtered.append((cx, cy, pt, w, h))
-
-    return [(label, (cx, cy), pt, w, h) for cx, cy, pt, w, h in filtered]
+    return [(label, (cx, cy), max_loc, w, h)]
 
 
 def detect(img):
@@ -59,6 +43,7 @@ def detect(img):
         template = cv2.imread(path, 0)
 
         if template is None:
+            print(f"{path} 読み込み失敗")
             continue
 
         results = match_template(img_gray, template, label)
@@ -70,6 +55,7 @@ def detect(img):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
     return img, all_results
+
 
 @app.route("/")
 def index():
@@ -88,17 +74,12 @@ def upload():
     result_img, results = detect(img)
 
     cv2.imwrite("result.jpg", result_img)
-    
-    output = {}
 
+    output = {}
     for label, (cx, cy), pt, w, h in results:
         output[label] = [int(cx), int(cy)]
 
     return jsonify(output)
-
-    text = "\n".join([f"{r[0]} -> {r[1]}" for r in results])
-
-    return f"<pre>{text}</pre><br><a href='/result'>結果画像を見る</a>"
 
 
 @app.route("/result")
@@ -107,4 +88,4 @@ def result():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0",port=5000,debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
