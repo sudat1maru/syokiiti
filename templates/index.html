@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>順位検出ツール</title>
+    <title>位置番号検出ツール</title>
     <style>
         body {
             font-family: Arial;
@@ -13,13 +13,13 @@
             margin: 0;
         }
 
-        .container {
+        .box {
             background: white;
             padding: 30px;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             text-align: center;
-            width: 400px;
+            width: 350px;
         }
 
         button {
@@ -41,10 +41,11 @@
 </head>
 
 <body>
-<div class="container">
-    <h2>順位検出ツール</h2>
 
-    <input type="file" id="images" multiple>
+<div class="box">
+    <h2>位置番号検出</h2>
+
+    <input type="file" id="image">
     <br>
     <button onclick="upload()">解析する</button>
 
@@ -53,12 +54,15 @@
 
 <script>
 function upload() {
-    const files = document.getElementById("images").files;
-    const formData = new FormData();
+    const file = document.getElementById("image").files[0];
 
-    for (let i = 0; i < files.length; i++) {
-        formData.append("images", files[i]);
+    if (!file) {
+        alert("画像を選択してね");
+        return;
     }
+
+    const formData = new FormData();
+    formData.append("image", file);
 
     fetch("/upload", {
         method: "POST",
@@ -74,11 +78,13 @@ function displayResult(data) {
     let html = "";
 
     for (let label in data) {
-        html += `<h3>${label}</h3>`;
+        let item = data[label];
 
-        data[label].forEach(item => {
-            html += `順位${item.rank}位: ${item.file} (Y=${item.y})<br>`;
-        });
+        if (item.index !== null) {
+            html += `<b>${label}</b> → 番号: ${item.index} (Y=${item.y})<br>`;
+        } else {
+            html += `<b>${label}</b> → 範囲外<br>`;
+        }
     }
 
     document.getElementById("result").innerHTML = html;
@@ -86,4 +92,5 @@ function displayResult(data) {
 </script>
 
 </body>
+</html>
 </html>
