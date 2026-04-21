@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 import cv2
 import numpy as np
 import os
+import json
 
 app = Flask(__name__)
 
@@ -23,6 +24,25 @@ FIXED_X = {
 }
 
 ROI_MARGIN = 120
+
+HISTORY_FILE = "history.json"
+
+if os.path.exists(HISTORY_FILE):
+    with open(HISTORY_FILE, "r") as f:
+        data = json.load(f)
+        history = {k: set(v) for k, v in data.items()}
+else:
+    history = {
+        "1st": set(),
+        "2nd": set(),
+        "3rd": set(),
+        "4th": set(),
+    }
+
+
+def save_history():
+    with open(HISTORY_FILE, "w") as f:
+        json.dump({k: list(v) for k, v in history.items()}, f)
 
 
 def match_template(img_gray, template_gray, label):
@@ -85,18 +105,20 @@ def upload():
         results = detect(img)
 
         for label, cx, cy in results:
+            cy_rounded = int(round(cy / 10) * 10)
+
+            history[label].add(cy_rounded)
+
             all_data.append({
                 "file": file.filename,
                 "label": label,
                 "x": int(cx),
-                "y": int(cy)
+                "y": int(cy_rounded)
             })
 
     ranked = {}
-
     for label in TEMPLATES.keys():
         filtered = [d for d in all_data if d["label"] == label]
-
         sorted_list = sorted(filtered, key=lambda x: x["y"])
 
         for i, item in enumerate(sorted_list):
@@ -104,7 +126,14 @@ def upload():
 
         ranked[label] = sorted_list
 
-    return jsonify(ranked)
+    counts = {label: len(history[label]) for label in history}
+
+    save_history()
+
+    return jsonify({
+        "ranking": ranked,
+        "patterns_count": counts
+    })
 
 
 if __name__ == "__main__":
