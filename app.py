@@ -21,7 +21,7 @@ TEMPLATES = {
     "4th": "4th.jpg",
 }
 
-MATCH_THRESHOLD = 0.75
+MATCH_THRESHOLD = 0.65
 
 
 def match_template(img_gray, template_gray):
@@ -82,16 +82,19 @@ def detect(img):
         if score < MATCH_THRESHOLD:
 
             output[label] = {
-                "error": f"検出失敗(score={score:.3f})"
+                "x": result["x"],
+                "y": result["y"],
+                "score": round(score, 4),
+                "warning": "一致率が低い"
             }
 
-            continue
+        else:
 
-        output[label] = {
-            "x": result["x"],
-            "y": result["y"],
-            "score": round(score, 4)
-        }
+            output[label] = {
+                "x": result["x"],
+                "y": result["y"],
+                "score": round(score, 4)
+            }
 
         x = result["x"]
         y = result["y"]
@@ -120,6 +123,7 @@ def detect(img):
             3
         )
 
+        # ラベル＋score
         cv2.putText(
             debug_img,
             f"{label} {score:.3f}",
@@ -138,6 +142,7 @@ def detect(img):
 
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):
+
     return send_from_directory(
         UPLOAD_FOLDER,
         filename
@@ -146,13 +151,17 @@ def uploaded_file(filename):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+
+    return render_template(
+        "index.html"
+    )
 
 
 @app.route("/upload", methods=["POST"])
 def upload():
 
     if "image" not in request.files:
+
         return jsonify({
             "error": "画像が選択されていません"
         })
@@ -169,6 +178,7 @@ def upload():
     img = cv2.imread(save_path)
 
     if img is None:
+
         return jsonify({
             "error": "画像の読み込みに失敗しました"
         })
@@ -185,12 +195,15 @@ def upload():
         debug_img
     )
 
-    result["debug_image"] = "/uploads/debug.png"
+    result["debug_image"] = (
+        "/uploads/debug.png"
+    )
 
     return jsonify(result)
 
 
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
         port=5000,
