@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>座標特定ツール(仮)</title>
+    <title>座標検出(仮)</title>
+
     <style>
         body {
             font-family: Arial;
@@ -15,30 +16,28 @@
 
         .box {
             background: white;
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
             text-align: center;
-            width: 380px;
+            width: 500px;
         }
 
         h2 {
-            margin-bottom: 20px;
-        }
-
-        input {
-            margin-bottom: 10px;
+            margin-bottom: 25px;
+            font-size: 26px;
         }
 
         button {
             margin-top: 10px;
-            padding: 10px 20px;
+            padding: 14px 28px;
             border: none;
             background: #2196F3;
             color: white;
-            border-radius: 8px;
+            border-radius: 10px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 16px;
         }
 
         button:hover {
@@ -46,32 +45,28 @@
         }
 
         #preview {
-            margin-top: 15px;
+            margin-top: 20px;
         }
 
         #preview img {
             width: 100%;
-            border-radius: 8px;
+            border-radius: 10px;
         }
 
         #result {
-            margin-top: 20px;
+            margin-top: 25px;
         }
 
         .item {
-            padding: 10px;
-            margin-bottom: 8px;
-            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
+            border-radius: 10px;
             background: #f0f0f0;
         }
 
         .label {
             font-weight: bold;
-        }
-
-        .index {
             font-size: 18px;
-            color: #e91e63;
         }
 
         .error {
@@ -84,78 +79,126 @@
 <body>
 
 <div class="box">
-    <h2>座標特定ツール(仮)</h2>
 
-    <input type="file" id="image" onchange="previewImage()">
+    <h2>座標検出(仮)</h2>
+
+    <input
+        type="file"
+        id="image"
+        onchange="previewImage()"
+    >
+
     <br>
-    <button onclick="upload()">解析する</button>
+
+    <button onclick="upload()">
+        解析する
+    </button>
 
     <div id="preview"></div>
 
     <div id="result"></div>
+
 </div>
 
 <script>
+
 function previewImage() {
-    const file = document.getElementById("image").files[0];
-    const preview = document.getElementById("preview");
+
+    const file =
+        document.getElementById("image").files[0];
+
+    const preview =
+        document.getElementById("preview");
 
     if (file) {
-        const url = URL.createObjectURL(file);
-        preview.innerHTML = `<img src="${url}">`;
+
+        const url =
+            URL.createObjectURL(file);
+
+        preview.innerHTML =
+            `<img src="${url}">`;
     }
 }
 
 function upload() {
-    const file = document.getElementById("image").files[0];
+
+    const file =
+        document.getElementById("image").files[0];
 
     if (!file) {
-        alert("画像を選択してね");
+        alert("画像を選択してください");
         return;
     }
 
     const formData = new FormData();
-    formData.append("image", file);
+
+    formData.append(
+        "image",
+        file
+    );
 
     fetch("/upload", {
         method: "POST",
         body: formData
     })
     .then(res => res.json())
-    .then(data => {
-        displayResult(data);
-    });
+    .then(data => displayResult(data));
 }
 
 function displayResult(data) {
+
     let html = "";
 
-    const order = ["1st", "2nd", "3rd", "4th"];
+    const order = [
+        "1st",
+        "2nd",
+        "3rd",
+        "4th"
+    ];
 
     order.forEach(label => {
-        if (data[label]) {
-            let item = data[label];
 
-            if (item.index !== null) {
-                html += `
-                    <div class="item">
-                        <div class="label">${label}</div>
-                        <div class="index">番号: ${item.index}</div>
-                        <div>Y: ${item.y}</div>
-                    </div>
-                `;
-            } else {
-                html += `
-                    <div class="item error">
-                        ${label} → 範囲外
-                    </div>
-                `;
-            }
+        if (!data[label]) return;
+
+        if (data[label].error) {
+
+            html += `
+                <div class="item error">
+                    ${label}
+                    :
+                    ${data[label].error}
+                </div>
+            `;
+
+            return;
         }
+
+        html += `
+            <div class="item">
+                <div class="label">
+                    ${label}
+                </div>
+
+                <div>
+                    X : ${data[label].x}
+                </div>
+
+                <div>
+                    Y : ${data[label].y}
+                </div>
+
+                <div>
+                    一致率 :
+                    ${data[label].score}
+                </div>
+            </div>
+        `;
     });
 
-    document.getElementById("result").innerHTML = html;
+    document.getElementById("result")
+        .innerHTML = html;
 }
+
 </script>
 
 </body>
