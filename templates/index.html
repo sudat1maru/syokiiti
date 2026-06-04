@@ -108,6 +108,12 @@
             margin-bottom: 8px;
         }
 
+        .warning {
+            color: #ff9800;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
         .error {
             color: red;
             font-weight: bold;
@@ -261,6 +267,16 @@ function displayResult(data) {
                 <div>
                     一致率: ${data[label].score}
                 </div>
+
+                ${
+                    data[label].warning
+                    ?
+                    `<div class="warning">
+                        ⚠ ${data[label].warning}
+                    </div>`
+                    :
+                    ""
+                }
 
             </div>
         `;
