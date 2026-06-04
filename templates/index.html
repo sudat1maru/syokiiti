@@ -1,9 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>座標検出(仮)</title>
 
     <style>
@@ -114,6 +113,12 @@
             font-weight: bold;
         }
 
+        .debug-image {
+            width: 100%;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+
         @media (max-width: 600px) {
 
             .box {
@@ -169,7 +174,8 @@ function previewImage() {
         return;
     }
 
-    const url = URL.createObjectURL(file);
+    const url =
+        URL.createObjectURL(file);
 
     preview.innerHTML = `
         <img src="${url}">
@@ -193,6 +199,9 @@ function upload() {
         file
     );
 
+    document.getElementById("result").innerHTML =
+        "<p>解析中...</p>";
+
     fetch("/upload", {
         method: "POST",
         body: formData
@@ -200,8 +209,11 @@ function upload() {
     .then(res => res.json())
     .then(data => displayResult(data))
     .catch(err => {
-        alert("解析に失敗しました");
+
         console.error(err);
+
+        document.getElementById("result").innerHTML =
+            "<div class='error'>解析に失敗しました</div>";
     });
 }
 
@@ -254,7 +266,26 @@ function displayResult(data) {
         `;
     });
 
-    document.getElementById("result").innerHTML = html;
+    if (data.debug_image) {
+
+        html += `
+            <div class="item">
+
+                <div class="label">
+                    デバッグ画像
+                </div>
+
+                <img
+                    class="debug-image"
+                    src="${data.debug_image}?t=${Date.now()}"
+                >
+
+            </div>
+        `;
+    }
+
+    document.getElementById("result").innerHTML =
+        html;
 }
 
 </script>
