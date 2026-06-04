@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request, jsonify
 import cv2
-import numpy as np
 import os
 
 app = Flask(__name__)
@@ -15,76 +14,69 @@ TEMPLATES = {
     "4th": "4th.jpg",
 }
 
-FIXED_X = {
-    "1st": 231,
-    "2nd": 467,
-    "3rd": 701,
-    "4th": 933,
-}
-
-ROI_MARGIN = 120
+MATCH_THRESHOLD = 0.75
 
 
-def y_to_index(label, y):
-    if label in ["1st", "4th"]:
-        base = 1470
-        max_val = 1580
-    else:
-        base = 1470
-        max_val = 1650
+def match_template(img_gray, template_gray):
 
-    if y < base or y > max_val:
-        return None
-
-    return int((y - base) / 2) + 1
-
-
-def match_template(img_gray, template_gray, label):
     h, w = template_gray.shape
 
-    x_center = FIXED_X[label]
-    x1 = max(0, x_center - ROI_MARGIN)
-    x2 = min(img_gray.shape[1], x_center + ROI_MARGIN)
+    result = cv2.matchTemplate(
+        img_gray,
+        template_gray,
+        cv2.TM_CCOEFF_NORMED
+    )
 
-    roi = img_gray[:, x1:x2]
-
-    result = cv2.matchTemplate(roi, template_gray, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-    if max_val < 0.6:
+    if max_val < MATCH_THRESHOLD:
         return None
 
-    cy = max_loc[1] + h // 2
+    center_x = max_loc[0] + (w // 2)
+    center_y = max_loc[1] + (h // 2)
 
-    cy = int(round(cy / 2) * 2)
-
-    cx = FIXED_X[label]
-
-    return (label, cx, cy)
+    return {
+        "x": int(center_x),
+        "y": int(center_y),
+        "score": round(float(max_val), 4)
+    }
 
 
 def detect(img):
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    result = {}
+    img_gray = cv2.cvtColor(
+        img,
+        cv2.COLOR_BGR2GRAY
+    )
+
+    output = {}
 
     for label, path in TEMPLATES.items():
-        template = cv2.imread(path, 0)
+
+        template = cv2.imread(
+            path,
+            cv2.IMREAD_GRAYSCALE
+        )
+
         if template is None:
+            output[label] = {
+                "error": f"{path} が見つかりません"
+            }
             continue
 
-        r = match_template(img_gray, template, label)
-        if r:
-            _, cx, cy = r
-            index = y_to_index(label, cy)
+        result = match_template(
+            img_gray,
+            template
+        )
 
-            result[label] = {
-                "x": int(cx),
-                "y": int(cy),
-                "index": index
+        if result:
+            output[label] = result
+        else:
+            output[label] = {
+                "error": "検出失敗"
             }
 
-    return result
+    return output
 
 
 @app.route("/")
@@ -94,16 +86,26 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    file = request.files["image"] 
 
-    path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(path)
+    file = request.files["image"]
 
-    img = cv2.imread(path)
+    save_path = os.path.join(
+        UPLOAD_FOLDER,
+        file.filename
+    )
+
+    file.save(save_path)
+
+    img = cv2.imread(save_path)
+
     result = detect(img)
 
     return jsonify(result)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True
+    )
