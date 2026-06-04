@@ -1,4 +1,11 @@
-from flask import Flask, render_template, request, jsonify
+from flask import (
+    Flask,
+    render_template,
+    request,
+    jsonify,
+    send_from_directory
+)
+
 import cv2
 import os
 
@@ -29,16 +36,13 @@ def match_template(img_gray, template_gray):
 
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-    if max_val < MATCH_THRESHOLD:
-        return None
-
-    center_x = max_loc[0] + (w // 2)
-    center_y = max_loc[1] + (h // 2)
-
     return {
-        "x": int(center_x),
-        "y": int(center_y),
-        "score": round(float(max_val), 4)
+        "score": float(max_val),
+        "top_left": max_loc,
+        "width": w,
+        "height": h,
+        "x": max_loc[0] + w // 2,
+        "y": max_loc[1] + h // 2
     }
 
 
@@ -48,6 +52,8 @@ def detect(img):
         img,
         cv2.COLOR_BGR2GRAY
     )
+
+    debug_img = img.copy()
 
     output = {}
 
@@ -59,9 +65,11 @@ def detect(img):
         )
 
         if template is None:
+
             output[label] = {
                 "error": f"{path} が見つかりません"
             }
+
             continue
 
         result = match_template(
@@ -69,14 +77,71 @@ def detect(img):
             template
         )
 
-        if result:
-            output[label] = result
-        else:
+        score = result["score"]
+
+        if score < MATCH_THRESHOLD:
+
             output[label] = {
-                "error": "検出失敗"
+                "error": f"検出失敗(score={score:.3f})"
             }
 
-    return output
+            continue
+
+        output[label] = {
+            "x": result["x"],
+            "y": result["y"],
+            "score": round(score, 4)
+        }
+
+        x = result["x"]
+        y = result["y"]
+
+        top_left = result["top_left"]
+
+        w = result["width"]
+        h = result["height"]
+
+        cv2.rectangle(
+            debug_img,
+            top_left,
+            (
+                top_left[0] + w,
+                top_left[1] + h
+            ),
+            (0, 255, 0),
+            2
+        )
+
+        cv2.circle(
+            debug_img,
+            (x, y),
+            15,
+            (0, 0, 255),
+            3
+        )
+
+        cv2.putText(
+            debug_img,
+            f"{label} {score:.3f}",
+            (
+                top_left[0],
+                max(30, top_left[1] - 10)
+            ),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (255, 0, 0),
+            2
+        )
+
+    return output, debug_img
+
+
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(
+        UPLOAD_FOLDER,
+        filename
+    )
 
 
 @app.route("/")
@@ -86,6 +151,11 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
+
+    if "image" not in request.files:
+        return jsonify({
+            "error": "画像が選択されていません"
+        })
 
     file = request.files["image"]
 
@@ -98,7 +168,24 @@ def upload():
 
     img = cv2.imread(save_path)
 
-    result = detect(img)
+    if img is None:
+        return jsonify({
+            "error": "画像の読み込みに失敗しました"
+        })
+
+    result, debug_img = detect(img)
+
+    debug_path = os.path.join(
+        UPLOAD_FOLDER,
+        "debug.png"
+    )
+
+    cv2.imwrite(
+        debug_path,
+        debug_img
+    )
+
+    result["debug_image"] = "/uploads/debug.png"
 
     return jsonify(result)
 
